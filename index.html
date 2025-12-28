@@ -13,8 +13,10 @@ const ImpostorGame = () => {
   const [impostorGuess, setImpostorGuess] = useState('');
   const [customCategory, setCustomCategory] = useState('');
   const [customWords, setCustomWords] = useState('');
+  const [customCategories, setCustomCategories] = useState({});
+  const [loading, setLoading] = useState(true);
 
-  const categories = {
+  const baseCategories = {
     'Animales': ['Perro', 'Gato', 'Elefante', 'Jirafa', 'Delfín', 'Tigre', 'Pingüino', 'Águila'],
     'Comida': ['Pizza', 'Hamburguesa', 'Sushi', 'Tacos', 'Helado', 'Pasta', 'Chocolate', 'Café'],
     'Lugares': ['Playa', 'Montaña', 'Ciudad', 'Bosque', 'Desierto', 'Isla', 'Museo', 'Parque'],
@@ -24,6 +26,70 @@ const ImpostorGame = () => {
   };
 
   const [selectedCategory, setSelectedCategory] = useState('Animales');
+
+  // Cargar categorías guardadas al iniciar
+  useEffect(() => {
+    loadCustomCategories();
+  }, []);
+
+  const loadCustomCategories = async () => {
+    try {
+      const result = await window.storage.get('impostor-categories', true);
+      if (result && result.value) {
+        setCustomCategories(JSON.parse(result.value));
+      }
+    } catch (error) {
+      console.log('No hay categorías personalizadas guardadas aún');
+    }
+    setLoading(false);
+  };
+
+  const saveCustomCategory = async () => {
+    if (!customCategory.trim() || !customWords.trim()) {
+      alert('Por favor completa ambos campos');
+      return;
+    }
+
+    const wordsArray = customWords.split(',').map(w => w.trim()).filter(w => w);
+    if (wordsArray.length < 3) {
+      alert('Necesitas al menos 3 palabras para crear una categoría');
+      return;
+    }
+
+    const newCategories = {
+      ...customCategories,
+      [customCategory]: wordsArray
+    };
+
+    try {
+      await window.storage.set('impostor-categories', JSON.stringify(newCategories), true);
+      setCustomCategories(newCategories);
+      setSelectedCategory(customCategory);
+      setCustomCategory('');
+      setCustomWords('');
+      alert('¡Categoría guardada! Ahora todos pueden usarla 🎉');
+    } catch (error) {
+      alert('Error al guardar la categoría. Intenta de nuevo.');
+    }
+  };
+
+  const deleteCustomCategory = async (categoryName) => {
+    const newCategories = { ...customCategories };
+    delete newCategories[categoryName];
+
+    try {
+      await window.storage.set('impostor-categories', JSON.stringify(newCategories), true);
+      setCustomCategories(newCategories);
+      if (selectedCategory === categoryName) {
+        setSelectedCategory('Animales');
+      }
+    } catch (error) {
+      alert('Error al eliminar la categoría');
+    }
+  };
+
+  // Combinar categorías base con personalizadas
+  const allCategories = { ...baseCategories, ...customCategories };
 
   useEffect(() => {
     if (gameState === 'playing' && timer > 0) {
@@ -35,9 +101,7 @@ const ImpostorGame = () => {
   }, [gameState, timer]);
 
   const startGame = () => {
-    const words = customCategory && customWords 
-      ? customWords.split(',').map(w => w.trim()).filter(w => w)
-      : categories[selectedCategory];
+    const words = allCategories[selectedCategory];
     
     const word = words[Math.floor(Math.random() * words.length)];
     const impostor = Math.floor(Math.random() * numPlayers);
@@ -114,6 +178,21 @@ const ImpostorGame = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
+      <style>{`
+        @keyframes slideUp {
+          from {
+            transform: translateY(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+        .perspective-1000 {
+          perspective: 1000px;
+        }
+      `}</style>
       <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full">
         
         {/* SETUP */}
@@ -124,64 +203,112 @@ const ImpostorGame = () => {
               <p className="text-gray-600">Encuentra al impostor antes de que sea demasiado tarde</p>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Número de jugadores (3-10)
-                </label>
-                <input
-                  type="number"
-                  min="3"
-                  max="10"
-                  value={numPlayers}
-                  onChange={(e) => setNumPlayers(Math.max(3, Math.min(10, parseInt(e.target.value) || 3)))}
-                  className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg focus:outline-none focus:border-purple-500"
-                />
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-900 mx-auto"></div>
               </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Número de jugadores (3-10)
+                  </label>
+                  <input
+                    type="number"
+                    min="3"
+                    max="10"
+                    value={numPlayers}
+                    onChange={(e) => setNumPlayers(Math.max(3, Math.min(10, parseInt(e.target.value) || 3)))}
+                    className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg focus:outline-none focus:border-purple-500"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Categoría de palabras
-                </label>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg focus:outline-none focus:border-purple-500"
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Categoría de palabras
+                  </label>
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg focus:outline-none focus:border-purple-500"
+                  >
+                    <optgroup label="Categorías Base">
+                      {Object.keys(baseCategories).map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </optgroup>
+                    {Object.keys(customCategories).length > 0 && (
+                      <optgroup label="Categorías de la Comunidad">
+                        {Object.keys(customCategories).map(cat => (
+                          <option key={cat} value={cat}>{cat} ⭐</option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+
+                {/* Mostrar palabras de categoría personalizada seleccionada */}
+                {customCategories[selectedCategory] && (
+                  <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="text-sm font-medium text-blue-900">
+                        Categoría creada por la comunidad ⭐
+                      </p>
+                      <button
+                        onClick={() => {
+                          if (confirm('¿Eliminar esta categoría para todos?')) {
+                            deleteCustomCategory(selectedCategory);
+                          }
+                        }}
+                        className="text-red-600 hover:text-red-800 text-xs"
+                      >
+                        🗑️ Eliminar
+                      </button>
+                    </div>
+                    <p className="text-xs text-blue-700">
+                      Palabras: {customCategories[selectedCategory].join(', ')}
+                    </p>
+                  </div>
+                )}
+
+                <div className="border-t-2 border-gray-200 pt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    ➕ Crear nueva categoría para todos
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Nombre de categoría (ej: Películas Disney)"
+                    value={customCategory}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                    className="w-full px-4 py-2 mb-2 border-2 border-purple-300 rounded-lg focus:outline-none focus:border-purple-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Palabras separadas por comas (mínimo 3)"
+                    value={customWords}
+                    onChange={(e) => setCustomWords(e.target.value)}
+                    className="w-full px-4 py-2 mb-2 border-2 border-purple-300 rounded-lg focus:outline-none focus:border-purple-500"
+                  />
+                  <button
+                    onClick={saveCustomCategory}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded-lg transition-colors"
+                  >
+                    💾 Guardar categoría para toda la comunidad
+                  </button>
+                  <p className="text-xs text-gray-500 mt-2">
+                    ℹ️ Las categorías que crees estarán disponibles para todos los jugadores
+                  </p>
+                </div>
+
+                <button
+                  onClick={startGame}
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
                 >
-                  {Object.keys(categories).map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                  <Play size={20} />
+                  Iniciar Juego
+                </button>
               </div>
-
-              <div className="border-t-2 border-gray-200 pt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  O usa palabras personalizadas
-                </label>
-                <input
-                  type="text"
-                  placeholder="Nombre de categoría"
-                  value={customCategory}
-                  onChange={(e) => setCustomCategory(e.target.value)}
-                  className="w-full px-4 py-2 mb-2 border-2 border-purple-300 rounded-lg focus:outline-none focus:border-purple-500"
-                />
-                <input
-                  type="text"
-                  placeholder="Palabras separadas por comas"
-                  value={customWords}
-                  onChange={(e) => setCustomWords(e.target.value)}
-                  className="w-full px-4 py-2 border-2 border-purple-300 rounded-lg focus:outline-none focus:border-purple-500"
-                />
-              </div>
-
-              <button
-                onClick={startGame}
-                className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
-              >
-                <Play size={20} />
-                Iniciar Juego
-              </button>
-            </div>
+            )}
           </div>
         )}
 
@@ -194,29 +321,67 @@ const ImpostorGame = () => {
             
             {!wordRevealed ? (
               <div className="space-y-4">
-                <p className="text-gray-600">Presiona para ver tu palabra (los demás no deben mirar)</p>
-                <button
-                  onClick={revealWord}
-                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 px-8 rounded-lg flex items-center justify-center gap-2 mx-auto transition-colors"
-                >
-                  <Eye size={24} />
-                  Ver Palabra
-                </button>
+                <p className="text-gray-600 mb-6">Desliza la carta hacia arriba para revelar</p>
+                
+                <div className="relative w-full max-w-sm mx-auto h-96 perspective-1000">
+                  <div 
+                    className="absolute inset-0 cursor-pointer"
+                    onClick={revealWord}
+                  >
+                    {/* Carta de fondo (revelada) */}
+                    <div className="absolute inset-0 rounded-2xl shadow-2xl overflow-hidden">
+                      {currentPlayer === impostorIndex ? (
+                        <div className="w-full h-full bg-gradient-to-br from-red-500 to-red-700 flex flex-col items-center justify-center p-8">
+                          <AlertCircle className="mb-4 text-white" size={64} />
+                          <p className="text-4xl font-bold text-white mb-2">IMPOSTOR</p>
+                          <p className="text-white text-lg">¡Pasa desapercibido!</p>
+                        </div>
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-green-500 to-green-700 flex flex-col items-center justify-center p-8">
+                          <div className="bg-white/20 backdrop-blur-sm rounded-xl p-6 mb-4">
+                            <p className="text-white text-lg mb-2">Tu palabra:</p>
+                            <p className="text-5xl font-bold text-white">{selectedWord}</p>
+                          </div>
+                          <p className="text-white text-lg">¡Da buenas pistas!</p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Carta de arriba (cover) */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-600 to-blue-600 rounded-2xl shadow-2xl flex flex-col items-center justify-center transition-all duration-300 hover:scale-105">
+                      <Eye className="text-white mb-4" size={64} />
+                      <p className="text-white text-2xl font-bold mb-2">Toca para revelar</p>
+                      <p className="text-white/80 text-sm">👆 Desliza hacia arriba</p>
+                      <div className="absolute bottom-8 animate-bounce">
+                        <div className="w-12 h-12 border-4 border-white rounded-full flex items-center justify-center">
+                          <span className="text-white text-2xl">↑</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="space-y-6">
-                {currentPlayer === impostorIndex ? (
-                  <div className="bg-red-100 border-4 border-red-500 rounded-lg p-8">
-                    <AlertCircle className="mx-auto mb-4 text-red-600" size={48} />
-                    <p className="text-3xl font-bold text-red-600">¡ERES EL IMPOSTOR!</p>
-                    <p className="text-gray-700 mt-2">No conoces la palabra. Trata de pasar desapercibido.</p>
+                <div className="relative w-full max-w-sm mx-auto h-96">
+                  <div className="absolute inset-0 rounded-2xl shadow-2xl overflow-hidden animate-[slideUp_0.5s_ease-out]">
+                    {currentPlayer === impostorIndex ? (
+                      <div className="w-full h-full bg-gradient-to-br from-red-500 to-red-700 flex flex-col items-center justify-center p-8">
+                        <AlertCircle className="mb-4 text-white" size={64} />
+                        <p className="text-4xl font-bold text-white mb-2">IMPOSTOR</p>
+                        <p className="text-white text-lg">¡Pasa desapercibido!</p>
+                      </div>
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-green-500 to-green-700 flex flex-col items-center justify-center p-8">
+                        <div className="bg-white/20 backdrop-blur-sm rounded-xl p-6 mb-4">
+                          <p className="text-white text-lg mb-2">Tu palabra:</p>
+                          <p className="text-5xl font-bold text-white">{selectedWord}</p>
+                        </div>
+                        <p className="text-white text-lg">¡Da buenas pistas!</p>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="bg-green-100 border-4 border-green-500 rounded-lg p-8">
-                    <p className="text-gray-700 mb-2">Tu palabra es:</p>
-                    <p className="text-4xl font-bold text-green-600">{selectedWord}</p>
-                  </div>
-                )}
+                </div>
                 
                 <button
                   onClick={nextPlayer}
